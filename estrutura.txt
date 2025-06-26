@@ -1,0 +1,60 @@
+
+investepronto-plataforma/
+├── app/                  # 💙 O CORAÇÃO DA SUA APLICAÇÃO (PÁGINAS E LÓGICA)
+│   ├── api/              # ⚙️ ROTAS DE BACKEND (NÃO SÃO PÁGINAS)
+│   │   └── stripe/
+│   │       ├── checkout/
+│   │       │   └── route.ts  # (Backend) Cria a sessão de pagamento do Stripe.
+│   │       └── webhook/
+│   │           └── route.ts  # (Backend) Recebe as notificações de pagamento do Stripe.
+│   │
+│   ├── aulas/            # 📖 ÁREA DE MEMBROS (ROTA PROTEGIDA)
+│   │   └── page.tsx      # Página principal da área de membros.
+│   │
+│   ├── assinar/          # 💳 PÁGINA DE ASSINATURA
+│   │   └── page.tsx      # Apresenta o plano e o botão para iniciar o checkout.
+│   │
+│   ├── auth/             # 🔐 LÓGICA DE AUTENTICAÇÃO
+│   │   ├── actions.ts    # (Backend) Funções de login e logout (Server Actions).
+│   │   └── callback/
+│   │       └── route.ts  # (Backend) Rota que o Supabase usa para finalizar o login.
+│   │
+│   ├── login/            # 🔑 PÁGINA DE LOGIN
+│   │   └── page.tsx      # Formulário para o usuário entrar na conta.
+│   │
+│   ├── globals.css       # Estilos CSS globais e diretivas do Tailwind.
+│   ├── layout.tsx        # Layout principal que envolve todas as páginas.
+│   └── page.tsx          # A PÁGINA INICIAL do seu site (o design original).
+│
+├── components/           # 🧩 COMPONENTES REUTILIZÁVEIS
+│   └── UserStatus.tsx    # Componente que mostra "Login" ou "Sair" dinamicamente.
+│
+├── lib/                  # 🔧 BIBLIOTECAS AUXILIARES E CLIENTES
+│   ├── prisma.ts         # Inicializa e exporta o cliente Prisma para todo o projeto.
+│   └── stripe.ts         # Inicializa e exporta o cliente Stripe para o backend.
+│
+├── prisma/               # 💾 CONFIGURAÇÃO DO BANCO DE DADOS
+│   ├── migrations/       # (Auto-gerado) Histórico das alterações do seu banco de dados.
+│   └── schema.prisma     # A "planta baixa" do seu banco: define as tabelas User e Subscription.
+│
+├── public/               # 🖼️ ARQUIVOS ESTÁTICOS
+│   └── logomarca_r_transparente.png # Suas imagens, fontes, etc.
+│
+├── .env.local            # 🤫 SUAS CHAVES SECRETAS (NÃO ENVIE PARA O GITHUB)
+├── .eslintrc.json        # Configuração do linter de código.
+├── .gitignore            # Arquivos e pastas a serem ignorados pelo Git (ex: node_modules).
+├── middleware.ts         # 👮 O "SEGURANÇA" que protege a rota /aulas.
+├── next.config.mjs       # Configurações avançadas do Next.js.
+├── package.json          # Lista de dependências e scripts do projeto.
+├── postcss.config.mjs    # Configuração do PostCSS (usado pelo Tailwind).
+└── tsconfig.json         # Configuração do TypeScript.
+
+Resumo da Organização
+
+    app/: É onde 90% da mágica acontece. O Next.js usa a estrutura de pastas dentro de app/ para criar as rotas (URLs) do seu site. Se você criar uma pasta app/contato/page.tsx, automaticamente terá a página seusite.com/contato.
+    components/: Para manter seu código limpo, qualquer parte da interface que você usa em mais de um lugar (como cabeçalhos, botões, cards) deve viver aqui.
+    lib/: Centraliza a inicialização de clientes de serviços externos (como Prisma e Stripe), evitando código repetido.
+    prisma/: O centro de comando do seu banco de dados. Qualquer alteração na estrutura de dados começa aqui.
+    Arquivos na Raiz (/): São os arquivos de configuração que governam o comportamento de todo o projeto.
+
+Esta estrutura é robusta, escalável e segue as convenções modernas de desenvolvimento web, tornando seu projeto fácil de entender e de dar manutenção no futuro.

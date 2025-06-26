@@ -1,0 +1,844 @@
+Entendido. O objetivo é ter um guia único, do zero ao código final, com absolutamente todos os arquivos e configurações em um só lugar.
+
+Vamos construir a versão final e consolidada da sua plataforma. Siga estes passos na ordem exata, e ao final você terá a aplicação completa rodando em sua máquina.
+
+-----
+
+### **Guia Definitivo: Do Zero à Plataforma de Membros Completa**
+
+Este guia irá orientá-lo a criar o projeto, instalar as dependências e preencher cada arquivo necessário com o código final.
+
+#### **Passo 0: Pré-requisitos**
+
+Antes de começar, certifique-se de que você tem:
+
+1.  [Node.js](https://nodejs.org/) (versão 18 ou superior) instalado.
+2.  Uma conta criada no [Supabase](https://supabase.com).
+3.  Uma conta criada no [Stripe](https://stripe.com).
+
+#### **Passo 1: Criação e Instalação do Projeto**
+
+Abra seu terminal e execute os seguintes comandos para criar um novo projeto Next.js e navegar para dentro da pasta.
+
+```bash
+npx create-next-app@latest investepronto-plataforma --typescript --tailwind --eslint
+cd investepronto-plataforma
+```
+
+Agora, instale todas as bibliotecas que a aplicação precisa:
+
+```bash
+npm install @prisma/client @supabase/auth-helpers-nextjs @supabase/supabase-js stripe @stripe/stripe-js tailwindcss-animate
+npm install -D prisma
+```
+
+#### **Passo 2: Configuração das Variáveis de Ambiente**
+
+Crie um arquivo chamado `.env.local` na raiz do seu projeto. **É crucial que este arquivo não seja enviado para o GitHub.** Copie o conteúdo abaixo e preencha com suas chaves secretas.
+
+##### **Arquivo: `.env.local`**
+
+```.env
+# Supabase - Encontre em Project Settings > API
+NEXT_PUBLIC_SUPABASE_URL=https_://xxxxxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=SUA_CHAVE_ANON_PUBLICA
+
+# Supabase - Encontre em Project Settings > Database > Connection string
+DATABASE_URL="postgresql://postgres:[SUA-SENHA]@[ID-DO-PROJETO].db.supabase.co:5432/postgres"
+
+# Stripe - Encontre no Dashboard do Desenvolvedor
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxx
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxx
+
+# ID do Preço - Crie um produto recorrente no Dashboard do Stripe e copie o ID do preço
+NEXT_PUBLIC_STRIPE_PRICE_ID=price_xxxxxxxxxxxxxx
+
+# Webhook Secret - Crie um endpoint de webhook no Stripe e copie a chave secreta
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxx
+
+# URL do seu site para desenvolvimento e produção
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
+
+#### **Passo 3: Configuração do Banco de Dados**
+
+Primeiro, inicialize o Prisma no seu projeto:
+
+```bash
+npx prisma init
+```
+
+Agora, substitua o conteúdo do arquivo `prisma/schema.prisma` pelo código abaixo.
+
+##### **Arquivo: `prisma/schema.prisma`**
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String        @id // ID do Supabase Auth
+  email            String        @unique
+  stripeCustomerId String?       @unique @map("stripe_customer_id")
+  subscription     Subscription?
+}
+
+model Subscription {
+  id               String   @id // ID da assinatura no Stripe
+  userId           String   @unique
+  status           String
+  currentPeriodEnd DateTime @map("current_period_end")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+```
+
+Finalmente, execute o comando abaixo para criar as tabelas no seu banco de dados Supabase:
+
+```bash
+npx prisma migrate dev --name "initial_model"
+```
+
+#### **Passo 4: Criação dos Arquivos e Código-Fonte**
+
+Agora, vamos criar cada arquivo da aplicação. Apague os arquivos padrão que vieram com o `create-next-app` (como `app/page.tsx`, `app/globals.css`) e substitua-os pelos arquivos abaixo.
+
+##### **Arquivo: `middleware.ts`** (na raiz do projeto)
+
+```typescript
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req, res });
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  // Se o usuário não está logado e tenta acessar uma rota protegida
+  if (!session && req.nextUrl.pathname.startsWith('/aulas')) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = '/login';
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  return res;
+}
+
+export const config = {
+  matcher: ['/aulas/:path*'],
+};
+```
+
+##### **Arquivo: `lib/prisma.ts`**
+
+```typescript
+import { PrismaClient } from '@prisma/client';
+
+const prismaClientSingleton = () => {
+  return new PrismaClient();
+};
+
+declare global {
+  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
+}
+
+const prisma = globalThis.prisma ?? prismaClientSingleton();
+
+export default prisma;
+
+if (process.env.NODE_ENV !== 'production') globalThis.prisma = prisma;
+```
+
+##### **Arquivo: `lib/stripe.ts`**
+
+```typescript
+import Stripe from 'stripe';
+
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2024-06-20',
+  typescript: true,
+});
+```
+
+##### **Arquivo: `app/globals.css`**
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Estilos do layout principal do site original */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 680px;
+  grid-template-rows: auto 1fr;
+  grid-gap: 2.2rem 2.2rem;
+  min-height: 100vh;
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.grid-titulo { grid-column: 1 / 2; grid-row: 1 / 2; }
+.grid-logo-e-auth { grid-column: 2 / 3; grid-row: 1 / 2; }
+.grid-caixas { grid-column: 1 / 2; grid-row: 2 / 3; margin-top: 0.2rem; }
+.grid-aprendizado { grid-column: 2 / 3; grid-row: 2 / 3; }
+
+/* Animação de Fade-in */
+.fade-in {
+  animation: fadein 0.6s;
+}
+@keyframes fadein {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (max-width: 1100px) {
+  .main-grid {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    gap: 1.5rem;
+  }
+}
+```
+
+##### **Arquivo: `app/layout.tsx`**
+
+```tsx
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "InvestePronto",
+  description: "Sua plataforma de educação financeira para o longo prazo.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="pt-br">
+      <head>
+        <link 
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+          rel="stylesheet" 
+        />
+      </head>
+      <body className={`${inter.className} bg-[#F8F6F1] text-[#1d313d]`}>
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+```
+
+##### **Arquivo: `components/UserStatus.tsx`**
+
+```tsx
+'use client';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { signOut } from '@/app/auth/actions';
+
+export default function UserStatus() {
+  const [session, setSession] = useState<Session | null>(null);
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    const getSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      setSession(data.session);
+    };
+    getSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+      }
+    );
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  return (
+    <div className="flex items-center justify-end space-x-4 h-8">
+      {session ? (
+        <>
+          <Link href="/aulas" className="text-gray-700 hover:text-[#2ea043] font-semibold text-sm">
+            Área de Membros
+          </Link>
+          <form action={signOut}>
+            <button type="submit" className="text-gray-700 hover:text-[#2ea043] text-sm">
+              Sair
+            </button>
+          </form>
+        </>
+      ) : (
+        <>
+          <Link href="/login" className="text-gray-700 hover:text-[#2ea043] font-semibold text-sm">
+            Login
+          </Link>
+          <Link href="/assinar" className="bg-[#2ea043] text-white px-3 py-1 rounded-md hover:bg-green-700 font-semibold text-sm">
+            Assinar
+          </Link>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+##### **Arquivo: `app/page.tsx`**
+
+```tsx
+'use client';
+import { useState } from 'react';
+import Link from 'next/link';
+import UserStatus from '@/components/UserStatus';
+
+const FilosofiaContent = () => (
+    <article className="bg-white rounded-2xl shadow-md p-8 min-h-[280px] w-full animate-fade-in border-2 border-[#a7c7f9]">
+        {/* COLE AQUI O CONTEÚDO HTML DO SEU 'filosofia-template' */}
+        <h2 className="text-2xl font-bold mb-4 text-[#1d313d]">Filosofia do Site</h2>
+        <p className="text-base text-gray-700">Aqui na InvestePronto, acreditamos que o tempo é o maior aliado do investidor...</p>
+    </article>
+);
+const AprendaContent = () => (
+    <article className="bg-white rounded-2xl shadow-md p-8 min-h-[280px] w-full animate-fade-in border-2 border-[#a7c7f9]">
+        {/* COLE AQUI O CONTEÚDO HTML DO SEU 'aprenda-template' */}
+        <h2 className="text-2xl font-bold mb-4 text-[#1d313d]">Aprenda a Investir</h2>
+        <p className="text-base text-gray-700">Módulo 1: Fundamentos Mentais e Financeiros...</p>
+    </article>
+);
+const JurosContent = () => (
+    <article className="bg-white rounded-2xl shadow-md p-8 min-h-[280px] w-full animate-fade-in border-2 border-[#a7c7f9]">
+        {/* COLE AQUI O CONTEÚDO HTML DO SEU 'juros-compostos-template' */}
+        <h2 className="text-2xl font-bold mb-4 text-[#1d313d]">Juros Compostos</h2>
+        <p className="text-base text-gray-700">O Poder dos Juros Compostos...</p>
+    </article>
+);
+const LongoPrazoContent = () => (
+    <article className="bg-white rounded-2xl shadow-md p-8 min-h-[280px] w-full animate-fade-in border-2 border-[#a7c7f9]">
+        <h2 className="text-2xl font-bold mb-4 text-[#1d313d]">Análise de Longo Prazo</h2>
+        <div className="text-base text-gray-700 mb-6">
+            <p>Resultados sólidos vêm de disciplina, análise e paciência. O tempo é sempre seu maior aliado...</p>
+            <p className="mt-4">A comunidade Investepronto existe para apoiar quem acredita em disciplina, estudo e visão de longo prazo. Aqui você nunca caminha sozinho.</p>
+        </div>
+        <div className="flex justify-center mt-6">
+            <Link href="/assinar" className="px-6 py-3 rounded-xl bg-[#1d313d] text-white font-semibold text-lg shadow hover:bg-[#29475d] transition">
+                Junte-se ao InvestePronto
+            </Link>
+        </div>
+    </article>
+);
+
+export default function HomePage() {
+  const [painelAtivo, setPainelAtivo] = useState<string>('1');
+
+  const cards = [
+    { id: '1', title: 'Filosofia do Site', description: 'Nossa abordagem para aprender a investir.', icon: 'fa-leaf' },
+    { id: '2', title: 'Aprenda a Investir', description: 'Conceitos essenciais para começar com segurança.', icon: 'fa-coins' },
+    { id: '3', title: 'Juros Compostos', description: 'Veja o tempo transformar pequenos investimentos.', icon: 'fa-chart-line' },
+    { id: '4', title: 'Análise de Longo Prazo', description: 'Decisões de hoje para o seu futuro financeiro.', icon: 'fa-hourglass-half' }
+  ];
+
+  const renderContent = () => {
+    switch (painelAtivo) {
+      case '1': return <FilosofiaContent />;
+      case '2': return <AprendaContent />;
+      case '3': return <JurosContent />;
+      case '4': return <LongoPrazoContent />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="p-8">
+      <div className="main-grid">
+        <header className="grid-titulo">
+          <h1 className="text-4xl font-extrabold tracking-tight">
+            <span className="text-[#1d313d]">Investe</span>
+            <span className="text-[#2ea043]">Pronto</span>
+          </h1>
+          <p className="mt-6 text-lg leading-relaxed text-[#1d313d] max-w-lg">
+            Nenhuma análise ou variável supera o tempo quando o assunto é crescimento de patrimônio.<br />
+            Invista com calma, use o tempo a seu favor e veja seu patrimônio se multiplicar.
+          </p>
+        </header>
+        
+        <div className="grid-logo-e-auth flex flex-col justify-between items-end">
+            <UserStatus />
+            <img 
+                src="logomarca_r_transparente.png" 
+                alt="Logo Investepronto" 
+                className="max-h-[180px] min-h-[100px] object-contain self-end mt-4"
+            />
+        </div>
+
+        <section className="grid-caixas self-start">
+          <div className="flex flex-col gap-6">
+            {cards.map(card => (
+              <article 
+                key={card.id} 
+                onClick={() => setPainelAtivo(card.id)} 
+                className={`w-full max-w-sm p-6 bg-white rounded-2xl shadow-md border-2 flex items-center gap-5 cursor-pointer hover:shadow-lg transition ${painelAtivo === card.id ? 'border-[#6CA5F1]' : 'border-transparent'}`}
+              >
+                <div className="flex-shrink-0 rounded-full flex items-center justify-center bg-[#eaf2fb] w-14 h-14">
+                  <i className={`fa-solid ${card.icon} text-3xl text-[#6CA5F1]`}></i>
+                </div>
+                <div>
+                  <h2 className="font-semibold text-lg text-[#1d313d]">{card.title}</h2>
+                  <p className="text-gray-500 text-sm">{card.description}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+        
+        <aside className="grid-aprendizado self-start">
+           <div className="w-full">
+              {renderContent()}
+           </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+```
+
+##### **Arquivo: `app/login/page.tsx`**
+
+```tsx
+import { signIn } from "@/app/auth/actions"
+
+export default function LoginPage() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
+        <h1 className="text-2xl font-bold text-center text-gray-900">Login</h1>
+        <form action={signIn} className="space-y-6">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              Email
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Senha
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <button
+              type="submit"
+              className="w-full px-4 py-2 font-semibold text-white bg-[#1d313d] rounded-md hover:bg-[#29475d] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Entrar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+```
+
+##### **Arquivo: `app/auth/actions.ts`** (Lógica de Login/Logout)
+
+```typescript
+'use server'
+
+import { createServerActionClient } from '@supabase/auth-helpers-nextjs'
+import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+export async function signIn(formData: FormData) {
+  const email = String(formData.get('email'))
+  const password = String(formData.get('password'))
+  const supabase = createServerActionClient({ cookies })
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (error) {
+    console.error(error)
+    redirect('/login?error=Authentication failed')
+    return
+  }
+
+  revalidatePath('/', 'layout')
+  redirect('/aulas')
+}
+
+export async function signOut() {
+  const supabase = createServerActionClient({ cookies })
+  await supabase.auth.signOut()
+  revalidatePath('/', 'layout')
+  redirect('/')
+}
+```
+
+##### **Arquivo: `app/auth/callback/route.ts`** (Necessário para Supabase)
+
+```typescript
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get('code')
+
+  if (code) {
+    const supabase = createRouteHandlerClient({ cookies })
+    await supabase.auth.exchangeCodeForSession(code)
+  }
+
+  // URL to redirect to after sign in process completes
+  return NextResponse.redirect(requestUrl.origin)
+}
+```
+
+##### **Arquivo: `app/assinar/page.tsx`**
+
+```tsx
+'use client';
+import { loadStripe } from '@stripe/stripe-js';
+import { useState } from 'react';
+
+export default function AssinarPage() {
+  const [loading, setLoading] = useState(false);
+
+  const handleCheckout = async () => {
+    setLoading(true);
+    // Primeiro, verifica se o usuário está logado
+    // Em uma app real, você pegaria a sessão aqui, mas para o fluxo de venda,
+    // o checkout do Stripe pode criar um cliente com o email.
+
+    const res = await fetch('/api/stripe/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID }),
+    });
+
+    const { url } = await res.json();
+    if (url) {
+      window.location.href = url;
+    } else {
+        alert("Erro ao iniciar o checkout. O usuário precisa estar logado.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="container mx-auto text-center py-20">
+      <h1 className="text-4xl font-bold mb-4">Assine o InvestePronto</h1>
+      <p className="text-xl text-gray-600 mb-8">Acesso ilimitado a todo o nosso conteúdo exclusivo.</p>
+      <div className="bg-white p-8 rounded-lg shadow-lg inline-block">
+        <h2 className="text-2xl font-semibold">Plano Completo</h2>
+        <p className="text-5xl font-bold my-4">R$29<span className="text-xl">/mês</span></p>
+        <button 
+          onClick={handleCheckout} 
+          disabled={loading}
+          className="bg-[#2ea043] text-white w-full py-3 rounded-lg font-bold text-lg hover:bg-green-700 transition disabled:opacity-50"
+        >
+          {loading ? 'Carregando...' : 'Assinar Agora'}
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+##### **Arquivo: `app/aulas/page.tsx`**
+
+```tsx
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import prisma from '@/lib/prisma';
+import Link from 'next/link';
+
+async function getActiveSubscription(userId: string) {
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId, status: 'active' },
+    });
+    return subscription;
+  } catch (error) {
+    console.error("Database query failed:", error);
+    return null;
+  }
+}
+
+export default async function AulasPage() {
+  const supabase = createServerComponentClient({ cookies });
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
+    redirect('/login');
+  }
+
+  const subscription = await getActiveSubscription(session.user.id);
+
+  if (!subscription) {
+    return (
+      <div className="container mx-auto text-center py-20">
+        <h1 className="text-3xl font-bold">Sem Assinatura Ativa</h1>
+        <p className="mt-4 text-lg">Você precisa de uma assinatura ativa para acessar este conteúdo.</p>
+        <Link href="/assinar" className="mt-6 inline-block bg-[#2ea043] text-white px-6 py-3 rounded-md font-bold">
+          Assinar Agora
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto py-10">
+      <h1 className="text-4xl font-bold">Bem-vindo(a) à Área do Assinante!</h1>
+      <p className="mt-4 text-xl">Aqui está a lista de aulas exclusivas para você.</p>
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Exemplo de card de aula */}
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <h2 className="text-2xl font-bold mb-2">Aula 1: Introdução ao Value Investing</h2>
+          <p className="text-gray-600">Aprenda os fundamentos da estratégia de Benjamin Graham.</p>
+          <button className="mt-4 bg-gray-800 text-white px-4 py-2 rounded-md">Assistir</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+##### **Arquivo: `app/api/stripe/checkout/route.ts`**
+
+```typescript
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe';
+import prisma from '@/lib/prisma';
+
+export async function POST(req: Request) {
+  const { priceId } = await req.json();
+  const supabase = createRouteHandlerClient({ cookies });
+  
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+
+  // Verifica se o usuário já existe no nosso DB, se não, cria.
+  let user = await prisma.user.findUnique({ where: { id: session.user.id } });
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        id: session.user.id,
+        email: session.user.email!,
+      }
+    });
+  }
+
+  try {
+    const checkoutSession = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      mode: 'subscription',
+      line_items: [{ price: priceId, quantity: 1 }],
+      customer: user.stripeCustomerId || undefined,
+      customer_email: !user.stripeCustomerId ? user.email : undefined,
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/aulas`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/assinar`,
+      metadata: {
+        userId: session.user.id,
+      },
+    });
+
+    return NextResponse.json({ url: checkoutSession.url });
+
+  } catch (error: any) {
+    console.error("Stripe Error:", error.message);
+    return new NextResponse('Internal Server Error', { status: 500 });
+  }
+}
+```
+
+##### **Arquivo: `app/api/stripe/webhook/route.ts`**
+
+```typescript
+import Stripe from 'stripe';
+import { headers } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe';
+import prisma from '@/lib/prisma';
+
+async function manageSubscriptionStatusChange(subscriptionId: string) {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const userId = subscription.metadata.userId;
+
+    if (!userId) {
+        console.error("Webhook Error: userId not found in subscription metadata");
+        return;
+    }
+    
+    const subscriptionData = {
+        id: subscription.id,
+        userId: userId,
+        status: subscription.status,
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    };
+
+    await prisma.subscription.upsert({
+        where: { userId: userId },
+        create: subscriptionData,
+        update: subscriptionData,
+    });
+}
+
+export async function POST(req: Request) {
+  const body = await req.text();
+  const signature = headers().get('Stripe-Signature') as string;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  let event: Stripe.Event;
+
+  try {
+    if (!signature || !webhookSecret) throw new Error("Missing signature or secret");
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+  } catch (err: any) {
+    return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });
+  }
+  
+  try {
+    switch (event.type) {
+        case 'checkout.session.completed':
+            const session = event.data.object as Stripe.Checkout.Session;
+            if (!session.metadata?.userId || !session.subscription || !session.customer) {
+                throw new Error("Missing metadata on checkout session");
+            }
+            // Atualiza o usuário com o customerId do Stripe
+            await prisma.user.update({
+                where: { id: session.metadata.userId },
+                data: { stripeCustomerId: session.customer.toString() },
+            });
+            // Cria ou atualiza a assinatura
+            await manageSubscriptionStatusChange(session.subscription.toString());
+            break;
+
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted':
+            const subscription = event.data.object as Stripe.Subscription;
+            await manageSubscriptionStatusChange(subscription.id);
+            break;
+        
+        default:
+            // console.log(`Unhandled event type: ${event.type}`);
+    }
+  } catch(error) {
+    console.error("Webhook handler error:", error);
+    return new NextResponse('Webhook handler failed', { status: 500 });
+  }
+  
+  return NextResponse.json({ received: true });
+}
+```
+
+-----
+
+Você agora tem o código-fonte completo e final da aplicação. Preencha os conteúdos que deixei como placeholder, configure suas chaves e rode o projeto.
+
+
+investepronto-plataforma/
+├── app/                  # 💙 O CORAÇÃO DA SUA APLICAÇÃO (PÁGINAS E LÓGICA)
+│   ├── api/              # ⚙️ ROTAS DE BACKEND (NÃO SÃO PÁGINAS)
+│   │   └── stripe/
+│   │       ├── checkout/
+│   │       │   └── route.ts  # (Backend) Cria a sessão de pagamento do Stripe.
+│   │       └── webhook/
+│   │           └── route.ts  # (Backend) Recebe as notificações de pagamento do Stripe.
+│   │
+│   ├── aulas/            # 📖 ÁREA DE MEMBROS (ROTA PROTEGIDA)
+│   │   └── page.tsx      # Página principal da área de membros.
+│   │
+│   ├── assinar/          # 💳 PÁGINA DE ASSINATURA
+│   │   └── page.tsx      # Apresenta o plano e o botão para iniciar o checkout.
+│   │
+│   ├── auth/             # 🔐 LÓGICA DE AUTENTICAÇÃO
+│   │   ├── actions.ts    # (Backend) Funções de login e logout (Server Actions).
+│   │   └── callback/
+│   │       └── route.ts  # (Backend) Rota que o Supabase usa para finalizar o login.
+│   │
+│   ├── login/            # 🔑 PÁGINA DE LOGIN
+│   │   └── page.tsx      # Formulário para o usuário entrar na conta.
+│   │
+│   ├── globals.css       # Estilos CSS globais e diretivas do Tailwind.
+│   ├── layout.tsx        # Layout principal que envolve todas as páginas.
+│   └── page.tsx          # A PÁGINA INICIAL do seu site (o design original).
+│
+├── components/           # 🧩 COMPONENTES REUTILIZÁVEIS
+│   └── UserStatus.tsx    # Componente que mostra "Login" ou "Sair" dinamicamente.
+│
+├── lib/                  # 🔧 BIBLIOTECAS AUXILIARES E CLIENTES
+│   ├── prisma.ts         # Inicializa e exporta o cliente Prisma para todo o projeto.
+│   └── stripe.ts         # Inicializa e exporta o cliente Stripe para o backend.
+│
+├── prisma/               # 💾 CONFIGURAÇÃO DO BANCO DE DADOS
+│   ├── migrations/       # (Auto-gerado) Histórico das alterações do seu banco de dados.
+│   └── schema.prisma     # A "planta baixa" do seu banco: define as tabelas User e Subscription.
+│
+├── public/               # 🖼️ ARQUIVOS ESTÁTICOS
+│   └── logomarca_r_transparente.png # Suas imagens, fontes, etc.
+│
+├── .env.local            # 🤫 SUAS CHAVES SECRETAS (NÃO ENVIE PARA O GITHUB)
+├── .eslintrc.json        # Configuração do linter de código.
+├── .gitignore            # Arquivos e pastas a serem ignorados pelo Git (ex: node_modules).
+├── middleware.ts         # 👮 O "SEGURANÇA" que protege a rota /aulas.
+├── next.config.mjs       # Configurações avançadas do Next.js.
+├── package.json          # Lista de dependências e scripts do projeto.
+├── postcss.config.mjs    # Configuração do PostCSS (usado pelo Tailwind).
+└── tsconfig.json         # Configuração do TypeScript.
+
+Resumo da Organização
+
+    app/: É onde 90% da mágica acontece. O Next.js usa a estrutura de pastas dentro de app/ para criar as rotas (URLs) do seu site. Se você criar uma pasta app/contato/page.tsx, automaticamente terá a página seusite.com/contato.
+    components/: Para manter seu código limpo, qualquer parte da interface que você usa em mais de um lugar (como cabeçalhos, botões, cards) deve viver aqui.
+    lib/: Centraliza a inicialização de clientes de serviços externos (como Prisma e Stripe), evitando código repetido.
+    prisma/: O centro de comando do seu banco de dados. Qualquer alteração na estrutura de dados começa aqui.
+    Arquivos na Raiz (/): São os arquivos de configuração que governam o comportamento de todo o projeto.
+
+Esta estrutura é robusta, escalável e segue as convenções modernas de desenvolvimento web, tornando seu projeto fácil de entender e de dar manutenção no futuro.
